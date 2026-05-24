@@ -7,6 +7,7 @@ from settings import *
 from entities import *
 from game import Background, StageManager
 from leaderboard import load_leaderboard, is_high_score, add_score
+from story import OPENING_LINES, ENDING_LINES, StoryPlayer
 
 
 def main():
@@ -185,6 +186,8 @@ def run_game(screen, clock, font, small_font, big_font):
     paused = False
     name_chars = []
     continue_timer = 0  # 10 second countdown on gameover
+    title_idle_timer = 0  # frames idle on title screen
+    story_player = None  # StoryPlayer instance for opening/ending
 
     running = True
     while running:
@@ -200,6 +203,7 @@ def run_game(screen, clock, font, small_font, big_font):
                         running = False
 
                 elif game_state == "title":
+                    title_idle_timer = 0  # reset idle on any key
                     if event.key == pygame.K_UP:
                         difficulty = max(0, difficulty - 1)
                     elif event.key == pygame.K_DOWN:
@@ -221,6 +225,7 @@ def run_game(screen, clock, font, small_font, big_font):
                         paused = False
                         continue_timer = 0
                         background = Background()
+                        title_idle_timer = 0
 
                 elif game_state == "gameover":
                     if event.key == pygame.K_RETURN and continue_timer > 0:
@@ -257,6 +262,16 @@ def run_game(screen, clock, font, small_font, big_font):
                 elif game_state == "leaderboard":
                     if event.key == pygame.K_RETURN:
                         game_state = "title"
+                        title_idle_timer = 0
+
+                elif game_state == "opening":
+                    # Any key skips opening
+                    game_state = "title"
+                    title_idle_timer = 0
+
+                elif game_state == "ending":
+                    # Any key skips ending, go to victory screen
+                    game_state = "victory"
 
                 elif game_state == "playing":
                     if event.key == pygame.K_p:
@@ -264,7 +279,33 @@ def run_game(screen, clock, font, small_font, big_font):
 
         # --- RENDER BY STATE ---
         if game_state == "title":
+            title_idle_timer += 1
+            if title_idle_timer >= 15 * FPS:
+                # 15 seconds idle - start opening
+                game_state = "opening"
+                story_player = StoryPlayer(OPENING_LINES)
+                title_idle_timer = 0
+                continue
             draw_title(screen, font, small_font, frame, difficulty)
+            pygame.display.flip()
+            clock.tick(FPS)
+            continue
+
+        if game_state == "opening":
+            story_player.update()
+            story_player.draw(screen, font, small_font)
+            if story_player.done:
+                game_state = "title"
+                title_idle_timer = 0
+            pygame.display.flip()
+            clock.tick(FPS)
+            continue
+
+        if game_state == "ending":
+            story_player.update()
+            story_player.draw(screen, font, small_font)
+            if story_player.done:
+                game_state = "victory"
             pygame.display.flip()
             clock.tick(FPS)
             continue
@@ -335,7 +376,8 @@ def run_game(screen, clock, font, small_font, big_font):
             if stage_clear_timer <= 0:
                 stages_cleared += 1
                 if stages_cleared >= 4:
-                    game_state = "victory"
+                    game_state = "ending"
+                    story_player = StoryPlayer(ENDING_LINES)
                     continue
                 stage_mgr.next_stage()
                 enemies.clear()
